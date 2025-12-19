@@ -47,6 +47,13 @@ const analyzeDocumentsStep = createStep({
       })
     ).optional(),
     question: z.string(),
+    searchResults: z.array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        content: z.string(),
+      })
+    ).optional(), // Получаем от предыдущего шага
   }),
   outputSchema: z.object({
     documentAnalysis: z.array(
@@ -57,7 +64,7 @@ const analyzeDocumentsStep = createStep({
     ).optional(),
   }),
   execute: async ({ inputData }) => {
-    const { documents, question } = inputData;
+    const { documents } = inputData;
 
     if (!documents || documents.length === 0) {
       return { documentAnalysis: undefined };
@@ -94,42 +101,53 @@ const processLegalQueryStep = createStep({
         url: z.string(),
         content: z.string(),
       })
-    ),
+    ).optional(), // Может быть от первого шага
     documentAnalysis: z.array(
       z.object({
         summary: z.string(),
         keyPoints: z.array(z.string()),
       })
-    ).optional(),
+    ).optional(), // Может быть от второго шага
     jurisdiction: z.string().optional().default("RU"),
   }),
   outputSchema: z.object({
-    answer: z.string(),
-    relevantLaws: z.array(z.string()).optional(),
-    recommendations: z.array(z.string()).optional(),
-    riskLevel: z.enum(["low", "medium", "high"]).optional(),
+    legalAnswer: z.object({
+      answer: z.string(),
+      relevantLaws: z.array(z.string()).optional(),
+      recommendations: z.array(z.string()).optional(),
+      riskLevel: z.enum(["low", "medium", "high"]).optional(),
+    }),
   }),
   execute: async ({ inputData }) => {
-    const { question, searchResults, documentAnalysis, jurisdiction } = inputData;
+    const { question, searchResults = [], documentAnalysis = [], jurisdiction = "RU" } = inputData;
 
     // Формируем контекст из результатов поиска и анализа документов
-    const context = [
-      ...searchResults.map((r) => `${r.title}: ${r.content}`),
-      ...(documentAnalysis || []).map((d) => d.summary),
-    ].join("\n\n");
+    const contextParts: string[] = [];
+    
+    if (searchResults && searchResults.length > 0) {
+      contextParts.push(...searchResults.map((r) => `${r.title}: ${r.content}`));
+    }
+    
+    if (documentAnalysis && documentAnalysis.length > 0) {
+      contextParts.push(...documentAnalysis.map((d) => d.summary));
+    }
+
+    const context = contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
 
     // Используем legalQueryTool для обработки запроса
     const result = await legalQueryTool.execute({
       question,
-      context: context || undefined,
+      context,
       jurisdiction,
     });
 
     return {
-      answer: result.answer,
-      relevantLaws: result.relevantLaws,
-      recommendations: result.recommendations,
-      riskLevel: result.riskLevel,
+      legalAnswer: {
+        answer: result.answer,
+        relevantLaws: result.relevantLaws,
+        recommendations: result.recommendations,
+        riskLevel: result.riskLevel,
+      },
     };
   },
 });
@@ -147,13 +165,13 @@ const formatResponseStep = createStep({
         url: z.string(),
         content: z.string(),
       })
-    ),
+    ).optional(), // Может быть от первого шага
     legalAnswer: z.object({
       answer: z.string(),
       relevantLaws: z.array(z.string()).optional(),
       recommendations: z.array(z.string()).optional(),
       riskLevel: z.enum(["low", "medium", "high"]).optional(),
-    }),
+    }).optional(), // Может быть от третьего шага
   }),
   outputSchema: z.object({
     response: z.object({
@@ -172,13 +190,17 @@ const formatResponseStep = createStep({
     }),
   }),
   execute: async ({ inputData }) => {
-    const { question, searchResults, legalAnswer } = inputData;
+    const { question, searchResults = [], legalAnswer } = inputData;
+
+    if (!legalAnswer) {
+      throw new Error("Legal answer is required");
+    }
 
     return {
       response: {
         question,
         answer: legalAnswer.answer,
-        sources: searchResults.map((r) => ({
+        sources: (searchResults || []).map((r) => ({
           title: r.title,
           url: r.url,
         })),
