@@ -1,0 +1,22 @@
+{
+  "name": "lexai-mastra-agent",
+  "version": "1.0.0",
+  "description": "LexAI Agent для развертывания на Mastra Cloud",
+  "type": "module",
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@mastra/core": "latest",
+    "@mastra/memory": "latest",
+    "@mastra/libsql": "latest",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "mastra": "latest",
+    "typescript": "^5.0.0"
+  }
+}

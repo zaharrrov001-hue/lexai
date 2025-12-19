@@ -1,0 +1,19 @@
+[Unit]
+Description=Mastra Server - LexAI Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/mastra
+Environment=NODE_ENV=production
+EnvironmentFile=/var/www/mastra/.env
+ExecStart=/usr/bin/node --import=/var/www/mastra/.mastra/output/instrumentation.mjs /var/www/mastra/.mastra/output/index.mjs
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
