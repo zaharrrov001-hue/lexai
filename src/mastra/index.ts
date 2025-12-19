@@ -1,16 +1,20 @@
 import { Mastra } from "@mastra/core/mastra";
 import { LibSQLStore } from "@mastra/libsql";
 import { lexaiAgent } from "./agents/lexai-agent";
+import { legalConsultationWorkflow } from "./workflows/legal-consultation-workflow";
 
 /**
  * Mastra Instance - главная точка входа для LexAI агента
  * 
- * Регистрирует всех агентов и делает их доступными через API
+ * Регистрирует всех агентов, workflows и делает их доступными через API
  * Настроен storage для memory (история разговоров, working memory, semantic recall)
  */
 export const mastra = new Mastra({
   agents: {
     lexaiAgent,
+  },
+  workflows: {
+    legalConsultationWorkflow,
   },
   // Storage для memory - хранит историю разговоров, working memory и semantic recall
   storage: new LibSQLStore({
