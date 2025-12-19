@@ -79,16 +79,19 @@ export const lexaiAgent = new Agent({
     vector: new LibSQLVector({
       connectionUrl: process.env.DATABASE_URL || "file:./lexai-agent-memory.db",
     }),
-    embedder: "openai/text-embedding-3-small",
+    // Embedder требуется только если включен semanticRecall
+    // Если OPENAI_API_KEY не установлен, semanticRecall будет отключен
+    embedder: process.env.OPENAI_API_KEY ? "openai/text-embedding-3-small" : undefined,
     options: {
       // История разговора - последние 20 сообщений
       lastMessages: 20,
       // Semantic recall - поиск по прошлым разговорам
-      semanticRecall: {
+      // Включается только если OPENAI_API_KEY установлен (для embedder)
+      semanticRecall: process.env.OPENAI_API_KEY ? {
         topK: 5, // Найти 5 наиболее релевантных сообщений
         messageRange: 2, // Включить 2 сообщения до и после найденного
         scope: "resource", // Поиск по всем разговорам пользователя
-      },
+      } : false,
       // Working memory - постоянная память о пользователе
       workingMemory: {
         enabled: true,
