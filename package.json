@@ -10,8 +10,9 @@
   },
   "dependencies": {
     "@mastra/core": "latest",
-    "@mastra/memory": "latest",
     "@mastra/libsql": "latest",
+    "@mastra/memory": "latest",
+    "node-fetch": "^3.3.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
