@@ -9,8 +9,23 @@ const searchStep = createStep({
   id: "search-legal-info",
   inputSchema: z.object({
     question: z.string().describe("Юридический вопрос для поиска информации"),
+    documents: z.array(
+      z.object({
+        url: z.string().optional(),
+        text: z.string().optional(),
+      })
+    ).optional(),
+    jurisdiction: z.string().optional().default("RU"),
   }),
   outputSchema: z.object({
+    question: z.string(),
+    documents: z.array(
+      z.object({
+        url: z.string().optional(),
+        text: z.string().optional(),
+      })
+    ).optional(),
+    jurisdiction: z.string().optional(),
     searchResults: z.array(
       z.object({
         title: z.string(),
@@ -20,7 +35,7 @@ const searchStep = createStep({
     ),
   }),
   execute: async ({ inputData }) => {
-    const { question } = inputData;
+    const { question, documents, jurisdiction } = inputData;
     
     // Используем webSearchTool для поиска информации
     const searchResult = await webSearchTool.execute({
@@ -29,6 +44,9 @@ const searchStep = createStep({
     });
 
     return {
+      question,
+      documents,
+      jurisdiction,
       searchResults: searchResult.results || [],
     };
   },
@@ -40,22 +58,32 @@ const searchStep = createStep({
 const analyzeDocumentsStep = createStep({
   id: "analyze-documents",
   inputSchema: z.object({
+    question: z.string(),
     documents: z.array(
       z.object({
         url: z.string().optional(),
         text: z.string().optional(),
       })
     ).optional(),
-    question: z.string(),
+    jurisdiction: z.string().optional(),
     searchResults: z.array(
       z.object({
         title: z.string(),
         url: z.string(),
         content: z.string(),
       })
-    ).optional(), // Получаем от предыдущего шага
+    ),
   }),
   outputSchema: z.object({
+    question: z.string(),
+    jurisdiction: z.string().optional(),
+    searchResults: z.array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        content: z.string(),
+      })
+    ),
     documentAnalysis: z.array(
       z.object({
         summary: z.string(),
@@ -64,27 +92,32 @@ const analyzeDocumentsStep = createStep({
     ).optional(),
   }),
   execute: async ({ inputData }) => {
-    const { documents } = inputData;
+    const { documents, question, jurisdiction, searchResults } = inputData;
 
-    if (!documents || documents.length === 0) {
-      return { documentAnalysis: undefined };
+    let documentAnalysis = undefined;
+    if (documents && documents.length > 0) {
+      const analyses = await Promise.all(
+        documents.map(async (doc) => {
+          const result = await documentAnalysisTool.execute({
+            documentUrl: doc.url,
+            documentText: doc.text,
+            analysisType: "summary",
+          });
+          return {
+            summary: result.summary,
+            keyPoints: result.keyPoints,
+          };
+        })
+      );
+      documentAnalysis = analyses;
     }
 
-    const analyses = await Promise.all(
-      documents.map(async (doc) => {
-        const result = await documentAnalysisTool.execute({
-          documentUrl: doc.url,
-          documentText: doc.text,
-          analysisType: "summary",
-        });
-        return {
-          summary: result.summary,
-          keyPoints: result.keyPoints,
-        };
-      })
-    );
-
-    return { documentAnalysis: analyses };
+    return {
+      question,
+      jurisdiction,
+      searchResults,
+      documentAnalysis,
+    };
   },
 });
 
@@ -95,22 +128,30 @@ const processLegalQueryStep = createStep({
   id: "process-legal-query",
   inputSchema: z.object({
     question: z.string(),
+    jurisdiction: z.string().optional(),
     searchResults: z.array(
       z.object({
         title: z.string(),
         url: z.string(),
         content: z.string(),
       })
-    ).optional(), // Может быть от первого шага
+    ),
     documentAnalysis: z.array(
       z.object({
         summary: z.string(),
         keyPoints: z.array(z.string()),
       })
-    ).optional(), // Может быть от второго шага
-    jurisdiction: z.string().optional().default("RU"),
+    ).optional(),
   }),
   outputSchema: z.object({
+    question: z.string(),
+    searchResults: z.array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        content: z.string(),
+      })
+    ),
     legalAnswer: z.object({
       answer: z.string(),
       relevantLaws: z.array(z.string()).optional(),
@@ -142,6 +183,8 @@ const processLegalQueryStep = createStep({
     });
 
     return {
+      question,
+      searchResults,
       legalAnswer: {
         answer: result.answer,
         relevantLaws: result.relevantLaws,
@@ -165,13 +208,13 @@ const formatResponseStep = createStep({
         url: z.string(),
         content: z.string(),
       })
-    ).optional(), // Может быть от первого шага
+    ),
     legalAnswer: z.object({
       answer: z.string(),
       relevantLaws: z.array(z.string()).optional(),
       recommendations: z.array(z.string()).optional(),
       riskLevel: z.enum(["low", "medium", "high"]).optional(),
-    }).optional(), // Может быть от третьего шага
+    }),
   }),
   outputSchema: z.object({
     response: z.object({
@@ -190,17 +233,13 @@ const formatResponseStep = createStep({
     }),
   }),
   execute: async ({ inputData }) => {
-    const { question, searchResults = [], legalAnswer } = inputData;
-
-    if (!legalAnswer) {
-      throw new Error("Legal answer is required");
-    }
+    const { question, searchResults, legalAnswer } = inputData;
 
     return {
       response: {
         question,
         answer: legalAnswer.answer,
-        sources: (searchResults || []).map((r) => ({
+        sources: searchResults.map((r) => ({
           title: r.title,
           url: r.url,
         })),
